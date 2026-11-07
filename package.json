@@ -1,0 +1,16 @@
+{
+  "name": "quantum_computer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "과학 초보자를 위한 한국어 양자컴퓨터 인터랙티브 교재",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "node scripts/serve.cjs",
+    "build": "node scripts/build.cjs",
+    "test": "node --test tests/model.test.cjs",
+    "test:browser": "node tests/browser.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0"
+  }
+}
