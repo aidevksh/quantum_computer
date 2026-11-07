@@ -1,9 +1,8 @@
-/* Browser integration checks. Starts and stops its own local static server. */
+/* React integration checks: build the Vite app, start its preview, and stop owned processes. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { chromium } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
@@ -11,7 +10,10 @@ const origin = 'http://127.0.0.1:4173';
 const chapters = ['start','waves','qubit','interference','entanglement','algorithm','scale','temperature','landscape','next'];
 const errors = [];
 let browser;
-const server = spawn(process.execPath, [path.join(root, 'scripts/serve.cjs')], { cwd: root, stdio: ['ignore','pipe','pipe'] });
+const build = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run','build'], { cwd:root, encoding:'utf8' });
+process.stdout.write(build.stdout || '');
+if (build.status !== 0) { process.stderr.write(build.stderr || 'Vite build failed'); process.exit(build.status || 1); }
+const server = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'),'preview','--host','127.0.0.1','--port','4173','--strictPort'], { cwd: root, stdio: ['ignore','pipe','pipe'] });
 let serverLog = '';
 server.stdout.on('data', b => serverLog += b);
 server.stderr.on('data', b => serverLog += b);
@@ -21,7 +23,7 @@ async function ready() {
   for (let i=0; i<60; i++) {
     try {
       const response = await fetch(origin);
-      if (response.ok && (await response.text()).includes('title-start')) return;
+      if (response.ok && (await response.text()).includes('<div id="root">')) return;
     } catch { /* Wait for the server to bind. */ }
     await delay(100);
   }
@@ -30,7 +32,7 @@ async function ready() {
 function monitor(page, name) {
   page.on('pageerror', error => errors.push(`${name}: ${error.message}`));
   page.on('requestfailed', req => {
-    if (req.url().startsWith(origin) || req.url().startsWith('file:')) errors.push(`${name}: failed ${req.url()} ${req.failure()?.errorText}`);
+    if (req.url().startsWith(origin)) errors.push(`${name}: failed ${req.url()} ${req.failure()?.errorText}`);
   });
   page.on('response', res => {
     if (res.url().startsWith(origin) && res.status() >= 400) errors.push(`${name}: HTTP ${res.status()} ${res.url()}`);
@@ -53,7 +55,10 @@ async function noOverflow(page, label) {
   assert.ok(measure.scroll <= measure.width + 1, `${label}: horizontal overflow ${JSON.stringify(measure)}`);
 }
 async function range(page, id, value) {
-  await page.locator('#'+id).evaluate((el, value) => { el.value=String(value); el.dispatchEvent(new Event('input',{bubbles:true})); }, value);
+  await reactRange(page.locator('#'+id),value);
+}
+async function reactRange(locator,value) {
+  await locator.evaluate((el,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,String(value));el.dispatchEvent(new Event('input',{bubbles:true}));},value);
 }
 async function text(page, selector, pattern) {
   assert.match(await page.locator(selector).innerText(), pattern, selector);
@@ -75,9 +80,64 @@ async function probability(page, id, expected) {
   await page.goto(origin, {waitUntil:'networkidle'});
   await settle(page);
   fs.mkdirSync(path.join(root,'.local'), {recursive:true});
-  await page.screenshot({path:path.join(root,'.local/desktop.png'),fullPage:true});
+  await page.screenshot({path:path.join(root,'.local/react-desktop.png'),fullPage:true});
   for (const id of chapters) { await chapter(page,id); await noOverflow(page,'desktop '+id); }
   console.log('PASS: all 10 chapters, desktop navigation, and horizontal layout');
+
+  assert.equal(await page.locator('.concept-film').count(),8,'eight mathematical films');
+  assert.equal(await page.locator('[data-equation]').count(),14,'fourteen symbol explainers');
+  const films=page.locator('.concept-film');
+  for(let i=0;i<await films.count();i++){
+    const film=films.nth(i), chapterId=await film.evaluate(el=>el.closest('[data-chapter]').dataset.chapter);
+    await chapter(page,chapterId);
+    await film.scrollIntoViewIfNeeded();
+    const scrubber=film.locator('.film-controls:not(.film-dialog-controls) .film-scrubber input');
+    const play=film.locator('.film-controls:not(.film-dialog-controls) .film-play');
+    assert.equal(await play.getAttribute('aria-pressed'),'false','reduced motion starts paused');
+    const diagram=film.locator('.film-stage svg');
+    await reactRange(scrubber,0);await settle(page);const start=await diagram.innerHTML();
+    await reactRange(scrubber,500);await settle(page);const middle=await diagram.innerHTML();
+    await reactRange(scrubber,1000);await settle(page);const end=await diagram.innerHTML();
+    assert.notEqual(start,middle,'first half changes diagram');assert.notEqual(middle,end,'second half changes diagram');
+    assert.equal(await film.locator('.film-cues button[aria-pressed]').count(),4,'four narrative cues');
+    const cueButtons=film.locator('.film-cues button[aria-pressed]');
+    await cueButtons.first().click();const firstCaption=await film.locator('.film-narration:not(.film-dialog-narration) h3').innerText();
+    await film.locator('button[aria-label="다음 설명 단계"]').click();assert.notEqual(await film.locator('.film-narration:not(.film-dialog-narration) h3').innerText(),firstCaption);
+    await film.locator('button[aria-label="이전 설명 단계"]').click();assert.equal(await film.locator('.film-narration:not(.film-dialog-narration) h3').innerText(),firstCaption);
+    await play.click();await page.waitForTimeout(180);assert.ok(Number(await scrubber.inputValue())>0,'play advances film');
+    await play.click();const paused=await scrubber.inputValue();await page.waitForTimeout(100);assert.equal(await scrubber.inputValue(),paused,'pause holds timeline');
+    await film.locator('.film-controls:not(.film-dialog-controls) select').selectOption('1.5');
+    await film.locator('button[aria-label="처음부터 다시 재생"]').click();await page.waitForTimeout(100);assert.equal(await play.getAttribute('aria-pressed'),'true');await play.click();
+  }
+  console.log('PASS: eight continuous films, four cues each, reduced motion, seek, play/pause, speed and replay');
+  let symbolCount=0;const miniKinds=new Set();
+  for(const id of chapters){
+    await chapter(page,id);
+    const equations=page.locator(`[data-chapter="${id}"] [data-equation]`);
+    for(let i=0;i<await equations.count();i++){
+      const equation=equations.nth(i);
+      await equation.evaluate(el=>{let parent=el.parentElement;while(parent){if(parent instanceof HTMLDetailsElement)parent.open=true;parent=parent.parentElement;}});
+      assert.ok((await equation.locator('.eq-reading p').innerText()).trim(),'formula has spoken reading');
+      const chips=equation.locator('.eq-symbol-list button');
+      for(let j=0;j<await chips.count();j++){
+        await chips.nth(j).click();symbolCount++;
+        assert.equal(await chips.nth(j).getAttribute('aria-pressed'),'true');
+        assert.equal(await equation.locator('.eq-definition-heading strong').innerText(),await chips.nth(j).locator('span').innerText());
+        assert.ok((await equation.locator('.eq-definition-heading b').innerText()).trim(),'symbol name populated');
+        assert.ok((await equation.locator('.eq-definition>p').innerText()).trim(),'symbol meaning populated');
+        assert.ok((await equation.locator('.eq-example span').innerText()).trim(),'concrete example populated');
+        const mini=equation.locator('.eq-mini');
+        if(await mini.count()){
+          const kind=await mini.getAttribute('class');
+          if(!miniKinds.has(kind)){miniKinds.add(kind);const slider=mini.locator('input[type=range]');if(await slider.count()){const before=await mini.innerHTML();const next=await slider.evaluate(el=>Number(el.value)===Number(el.max)?Number(el.min):Number(el.max));await reactRange(slider,next);assert.notEqual(await mini.innerHTML(),before,'symbol mini-visual responds to its slider');}}
+        }
+      }
+    }
+  }
+  assert.equal(symbolCount,await page.locator('.eq-symbol-list button').count(),'every symbol definition checked');
+  assert.ok(symbolCount>=50,'substantial symbol coverage');
+  assert.ok(miniKinds.size>=5,'at least five kinds of symbol mini-visuals checked');
+  console.log(`PASS: all 14 formula explainers and ${symbolCount} symbol names, definitions, examples, and mini-visuals`);
 
   await chapter(page,'qubit');
   await page.locator('[data-qubit="0,0"]').click();
@@ -90,7 +150,7 @@ async function probability(page, id, expected) {
   await text(page,'#qubit-result',/총 1,000회.*0: 0회.*1: 1,000회/);
   await page.locator('[data-qubit="90,0"]').click();
   await probability(page,'qubit-bars',[50,50]);
-  await page.screenshot({path:path.join(root,'.local/qubit.png'),fullPage:true});
+  await page.screenshot({path:path.join(root,'.local/react-film.png'),fullPage:true});
   await chapter(page,'interference');
   await page.locator('[data-phase="180"]').click();
   await probability(page,'interference-bars',[0,100]);
@@ -157,7 +217,7 @@ async function probability(page, id, expected) {
   await text(page,'.no-results',/일치하는 기관이 없습니다/);
   await page.locator('#landscape-search').fill('');
   await chapter(page,'next');
-  assert.ok(await page.locator('#sources-list .source-item a').count()>=50,'at least 50 source references');
+  assert.ok(await page.locator('#sources-list .source-item a').count()>=63,'at least 63 source references');
   assert.equal(await page.locator('.source-line').evaluateAll(els=>els.filter(el=>!el.querySelector('a')).length),0,'all chapter source lines populated');
   const answers=[false,true,false,true,false,true];
   for(let i=0;i<answers.length;i++) await page.locator('.quiz-question').nth(i).locator('.quiz-options button').nth(answers[i]?0:1).click();
@@ -179,23 +239,29 @@ async function probability(page, id, expected) {
   const mobile=await mobileContext.newPage(); monitor(mobile,'mobile');
   await mobile.goto(origin,{waitUntil:'networkidle'});
   await settle(mobile);
-  await mobile.screenshot({path:path.join(root,'.local/mobile.png'),fullPage:true});
+  await mobile.screenshot({path:path.join(root,'.local/react-mobile.png'),fullPage:true});
   for(const id of chapters){await chapter(mobile,id,true);await noOverflow(mobile,'mobile '+id);}
   console.log('PASS: all 10 chapters on mobile, menu closes on navigation, no horizontal page overflow');
 
-  const fileContext=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
-  const filePage=await fileContext.newPage();monitor(filePage,'file');
-  await filePage.goto(pathToFileURL(path.join(root,'index.html')).href+'#qubit',{waitUntil:'load'});
-  await filePage.locator('[data-chapter="qubit"]').waitFor({state:'visible'});
-  await settle(filePage);
-  await filePage.locator('[data-qubit="0,0"]').click();
-  await probability(filePage,'qubit-bars',[100,0]);
-  assert.ok(await filePage.evaluate(()=>window.SOURCES.length>=29&&window.LANDSCAPE.length>=10));
-  await chapter(filePage,'next');
-  assert.ok(await filePage.locator('#sources-list .source-item').count()>=50);
-  console.log('PASS: direct file:// opening, hash routing, local scripts, simulations, and source data');
+  await chapter(mobile,'qubit',true);
+  const expand=mobile.locator('.film-expand:visible').first();
+  await expand.click();const modal=mobile.locator('dialog[open]');await modal.waitFor();
+  assert.equal(await mobile.evaluate(()=>document.body.style.overflow),'hidden');
+  const stage=modal.locator('.film-dialog-stage');
+  const beforeWidth=await stage.evaluate(el=>el.scrollWidth);
+  await reactRange(modal.locator('input[aria-label="확대된 그림 배율"]'),1.5);
+  assert.ok(await stage.evaluate(el=>el.scrollWidth)>beforeWidth,'zoom makes diagram larger');
+  await reactRange(modal.locator('input[aria-label="확대 애니메이션 재생 위치"]'),750);
+  assert.ok((await modal.locator('.film-narration h3').innerText()).trim());
+  await stage.evaluate(el=>{el.scrollLeft=140;});assert.ok(await stage.evaluate(el=>el.scrollLeft)>0,'large mobile diagram pans');
+  await mobile.keyboard.press('Escape');assert.equal(await mobile.locator('dialog[open]').count(),0);
+  assert.equal(await mobile.evaluate(()=>document.body.style.overflow),'');
+  assert.ok(await expand.evaluate(el=>el===document.activeElement),'focus returns to expand button');
+  await mobile.setViewportSize({width:320,height:720});
+  for(const id of chapters){await chapter(mobile,id,true);await noOverflow(mobile,'320px '+id);}
+  console.log('PASS: native expanded dialog, zoom/pan/timeline, Escape/focus restoration, and 320px layout');
   assert.deepEqual(errors,[],'no browser errors or failed local resources');
-  console.log('PASS: browser integration suite complete; screenshots: .local/{desktop,mobile,qubit}.png');
+  console.log('PASS: browser integration suite complete; screenshots: .local/react-{desktop,mobile,film}.png');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   if(browser) await browser.close();
   if(server.exitCode===null){server.kill('SIGTERM');await Promise.race([new Promise(resolve=>server.once('exit',resolve)),delay(1000)]);}

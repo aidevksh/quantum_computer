@@ -1,6 +1,7 @@
+export interface Source { id: string; title: string; organization: string; date: string; url: string; note: string; }
 /* Primary and institution-authored references, checked on 2026-11-07.
    Detailed claim mappings and model assumptions are recorded in docs/research-*.md. */
-window.SOURCES = [
+export const sources: Source[] = [
   {
     id: 'feynman', title: 'The Feynman Lectures on Physics, III-1: Quantum Behavior',
     organization: 'Caltech', date: '상시 자료',
@@ -192,5 +193,7 @@ window.SOURCES = [
     organization: 'IBM Research · Ivano Tavernelli', date: '2018년 강연',
     url: 'https://indico.cern.ch/event/719844/contributions/3019718/attachments/1749768/2835637/CERN_Tavernelli4_l.pdf',
     note: '여러 단계로 온도가 낮아지는 초전도 양자컴퓨터 냉동기 개념도를 제공하며 각 단계 온도는 장치마다 다릅니다.'
-  }
+  },
+  { id:'visual-grover',title:'But what is quantum computing? (Grover’s Algorithm)',organization:'3Blue1Brown · Grant Sanderson',date:'2025-04-29',url:'https://www.3blue1brown.com/lessons/grover/',note:'벡터·진폭·연산을 시각적인 변화 과정으로 설명하는 교육 방식의 참고 자료입니다. 이 문서의 그림과 애니메이션은 직접 구현했습니다.' },
+  { id:'visual-vectors',title:'Vectors, what even are they?',organization:'3Blue1Brown · Grant Sanderson',date:'2016-08-06',url:'https://www.3blue1brown.com/lessons/vectors/',note:'수와 좌표를 화살표 및 도형의 변화에 연결하는 설명 방식의 참고 자료입니다.' }
 ];

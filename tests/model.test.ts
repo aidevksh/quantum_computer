@@ -1,7 +1,7 @@
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const q = require('../assets/quantum.js');
-const close = (a,b) => assert.ok(Math.abs(a-b) < 1e-10, `${a} != ${b}`);
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import * as q from '../src/lib/quantum';
+const close = (a: number,b: number) => assert.ok(Math.abs(a-b) < 1e-10, `${a} != ${b}`);
 test('qubit states normalize, Bloch points remain on unit sphere, phase leaves Z probabilities unchanged', () => {
   for (let t=0;t<=180;t+=5) for (let p=0;p<=360;p+=15) {
     const s=q.qubit(t*Math.PI/180,p*Math.PI/180);
@@ -19,6 +19,13 @@ test('Grover amplitudes normalize; four-item search succeeds in one iteration an
   }
   close(q.grover(4,2,1).probabilities[2],1);
   close(q.grover(4,2,2).probabilities[2],0.25);
+});
+test('animated Grover path conserves probability and reaches the oracle and diffusion states', () => {
+  for(let index=0;index<=1000;index++) close(q.groverEvolution(index/1000).probabilities.reduce((a,b)=>a+b,0),1);
+  const oracle=q.groverEvolution(.5);
+  close(oracle.real[3],-.5);oracle.probabilities.forEach(value=>close(value,.25));
+  const final=q.groverEvolution(1);
+  final.probabilities.forEach((value,i)=>close(value,i===3?1:0));
 });
 test('thermal model has correct limits and monotonicity', () => {
   close(q.thermal(0),0); assert.ok(q.thermal(0.015)<0.000001);

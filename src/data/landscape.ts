@@ -1,5 +1,7 @@
+export interface ResearchLink { title: string; url: string; date: string; }
+export interface Institution { id:string; name:string; category:string; region:string; date:string; status:'실증'|'개발'|'계획'; title:string; body:string; metric:string; caveat:string; direction:string; sources:ResearchLink[]; }
 /* Primary-source research checked 2026-11-07. Numbers across unlike tasks are not rankings. */
-window.LANDSCAPE = [
+export const landscape: Institution[] = [
   {
     id: 'ibm', name: 'IBM', category: '초전도', region: '미국', date: '2026-11-06', status: '실증',
     title: '운영 중인 장치에서, 모듈형 오류 정정으로',

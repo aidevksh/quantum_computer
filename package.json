@@ -1,16 +1,33 @@
 {
   "name": "quantum_computer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "과학 초보자를 위한 한국어 양자컴퓨터 인터랙티브 교재",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "node scripts/serve.cjs",
-    "build": "node scripts/build.cjs",
-    "test": "node --test tests/model.test.cjs",
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "test": "node --import tsx --test tests/model.test.ts",
     "test:browser": "node tests/browser.cjs"
   },
   "devDependencies": {
-    "playwright": "^1.65.0"
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "playwright": "^1.65.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
